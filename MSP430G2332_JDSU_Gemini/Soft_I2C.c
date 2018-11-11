@@ -1,0 +1,375 @@
+/******************************************************************************/
+/*                                                                            */
+/*  FILE        : Soft_I2C.c                                                  */
+/*  DATE        : Tue, July 04, 2013                                          */
+/*  DESCRIPTION : Software I2C protocol                                       */
+/*  CPU TYPE    : MSP430G2332                                                 */
+/*  PROJECT     : JDSU Gemini                                                 */
+/*  AUTHOR      : Suilarso Japit                                              */
+/*  VERSION     : 100.00                                                      */
+/*                                                                            */
+/******************************************************************************/
+
+
+#include   <msp430G2332.h>
+#include   "Soft_I2C.h"
+#include "global_var.h"  //SJ4300812 - 
+
+//--- SJ4210607 - Macro definition ---------------------------------------------
+
+//#define  SCL_PIN     PWM0
+//#define  SDA_PIN     PWM1
+//#define  ATTN_PIN    PWM3
+
+#define I2C_SCL_1             (P1OUT |= 0x40)  //SJ1080413 - 01000000
+#define I2C_SCL_0             (P1OUT &= 0xBF)  //SJ1080413 - 10111111
+#define I2C_SDA_1             (P1OUT |= 0x80)  //SJ1080413 - 10000000
+#define I2C_SDA_0             (P1OUT &= 0x7F)  //SJ1080413 - 01111111
+#define I2C_SDA_INPUTMODE     (P1DIR &= 0x7F)  //SJ1080413 - 01111111
+#define I2C_SDA_OUTPUTMODE    (P1DIR |= 0x80)  //SJ1080413 - 10000000
+#define I2C_READ_BIT          (P1IN & 0x80)    //SJ1080413 - 10000000
+//--- END ----------------------------------------------------------------------
+
+
+
+//--- SJ3200607 - Local global variables ---------------------------------------
+//unsigned char gI2CBuffer[MAX_I2C_BUFFER];    //equiv to 25
+//uint8_t gI2CBuffer[MAX_I2C_BUFFER];   //equiv to 50
+//--- END ----------------------------------------------------------------------
+
+
+//--- SJ3200607 - External global variables ------------------------------------
+extern STATE_STRUCT  gstate_var;
+extern unsigned char gI2C_Buffer[EEPROM_BUFFER];  //SJ4200214 [TCA6416A_BUFFER];
+//--- END ----------------------------------------------------------------------
+
+
+// Description:
+//   Start I2C communication - SDA changes state from high to low while SCL is high.
+void SW_I2CStart(void)
+{
+    //int16_t nop;
+
+  #if 1  //SJ1170314 - ORG
+    I2C_SCL_1;    //SJ3060607 - Set Clock high (SCL = 1)
+    I2C_SDA_1;    //SJ3060607 - Set Data high (SDA = 1)
+    I2C_DELAY(50);//(80);//(100);
+  #else  //SJ1170314 - Replaced
+    I2C_SCL_0;    //SJ3060607 - Set Clock low (SCL = 0)
+    I2C_SDA_0;    //SJ3060607 - Set Data low (SDA = 0)   //SJ4130314 - This is redundant
+    I2C_DELAY(25);//(80);//(100);
+    I2C_SDA_1;    //SJ3060607 - Set Data high (SDA = 1)
+    I2C_DELAY(25);//(80);//(100);
+    I2C_SCL_1;    //SJ3060607 - Set Clock high (SCL = 1)
+    I2C_DELAY(50);//(80);//(100);
+  #endif
+
+//    I2C_SCL_1;    //SJ3060607 - Set Clock high (SCL = 1)
+    I2C_SDA_0;    //SJ3060607 - Set Data low (SDA = 0)
+    I2C_DELAY(50);//(80);//(100);
+
+    I2C_SCL_0;    //SJ3060607 - Set Clock low (SCL = 0)
+    I2C_SDA_0;    //SJ3060607 - Set Data low (SDA = 0)   //SJ4130314 - This is redundant
+    I2C_DELAY(50);//(80);//(100);
+
+}  //End of One_Touch_I2CStart()
+
+
+//Description:
+//  Stop I2C communication - SDA changes state from low to high while SCL is high.
+void SW_I2CStop(void)
+{
+    //int16_t nop;
+
+    I2C_SCL_0;         //Set Clock low - SCL = 0
+    I2C_SDA_0;         //Set Data low - SDA = 0
+    I2C_DELAY(50);//(80);//(100);
+
+    I2C_SCL_1;         //Set Clock high - SCL = 1
+    //I2C_SDA_0;         //Set Data low - SDA = 0
+    I2C_DELAY(50);//(80);//(100);
+
+    //I2C_SCL_1;       //Set Clock high - SCL = 1
+    I2C_SDA_1;      //Set Data high - SDA = 1
+    I2C_DELAY(50);//(80);//(100);
+
+}  //End of One_Touch_I2CStop
+
+
+#if 0  //SJ5140314 - Customised for Microchip to do software reset of the EEPROM
+void SW_I2CReset(void)
+{
+    char j;
+
+    //Start I2C communication
+
+    SW_I2CStart();  //SJ5140314 - Start I2C communication
+
+    //SJ5140314 - This for loop churns out 9 bits of high
+    for (j=0; j<9; j++)
+    {
+        I2C_SCL_0;    //Set Clock low - SCL = 0
+        I2C_DELAY(50);//(100);//(30);
+
+        I2C_SDA_1;    //Set Data high - SDA = 1
+        //I2C_DELAY(50);//(100);//(40);
+
+        //SJ5140314 - Generate clock pulse.
+        I2C_SCL_1;    //Set Clock high - SCL = 1
+        I2C_DELAY(50);//(100);//(40);
+
+        //I2C_SCL_0;  //Set Clock low - SCL = 0
+        //I2C_SDA_0;  //Set Data low - SDA = 0    //SJ4140607 - Is this sttmt needed???
+        //I2C_DELAY(50);//(100);//(30);
+    }  //for (j)
+
+    SW_I2CStart();  //SJ5140314 - Start I2C communication
+    SW_I2CStop();   //SJ5140314 - Stop I2C communication
+
+}  //SJ5140314 - End of SW_I2CReset(void)
+#endif
+
+
+// Description:
+//   I2C Master acknowledge to slave
+void I2CMasterAcknowledge(unsigned char direction)
+{
+    //int16_t nop;
+
+    if (direction)
+        I2C_SDA_1;  //Set Data high - SDA = 1    //SJ4140607 - mainly to stop reading - Master NAK
+    else
+        I2C_SDA_0;  //Set Data low - SDA = 0     //SJ2280807 - Master ACK
+    I2C_DELAY(50);//(80);//(100);
+
+    I2C_SCL_1;    //SJ3060607 - Set Clock high (SCL = 1)
+    I2C_DELAY(50);//(80);//(100);
+
+    I2C_SCL_0;    //SJ3060607 - Set Clock low (SCL = 0)
+    I2C_DELAY(50);//(80);//(100);
+
+}  //End of I2CMasterAcknowledge()
+
+
+
+// Description:
+//   Check acknowledgement.
+//int8_t I2CCheckSlaveAcknowledgement(void)
+char I2CCheckSlaveAcknowledgement(void)
+{
+    //int16_t num_tries;
+    //int8_t ack = 0;
+    int num_tries;
+    char ack = 0;
+
+    //SJ4140607 - Tunggu balasan dari slave
+
+    //I2C_SDA_1;  //Set Data low
+    //SJ3060607 - Change PWM1 to input so that ACK can be received
+    I2C_SDA_INPUTMODE;  //SJ3060607 - Change SDA_PIN to input pin
+
+  #if 1  //SJ4130314 - ORG
+    I2C_DELAY(40);
+  #else  //SJ4130314 - Replaced
+    I2C_SCL_1;  //Set Clock high. SJ4140607 - Ninth clock pulse
+    I2C_DELAY(20);
+  #endif
+
+#if 1  //SJ5240807 - Replaced
+    num_tries = 0;
+    while (num_tries < 250)
+    {
+        ack = I2C_READ_BIT;
+        if (ack == 0)
+        {
+            break;
+        }
+        else
+            num_tries++;
+    }
+#endif
+
+  #if 1  //SJ4130314 - ORG
+    I2C_DELAY(50);//(80);//(100);
+    I2C_SCL_1;  //Set Clock high. SJ4140607 - Ninth clock pulse
+  #endif
+
+    I2C_DELAY(50);//(80);//(100);
+    I2C_SCL_0;  //Set Clock low
+
+    I2C_DELAY(50);//(80);//(100);   //SJ5240807 - Change value
+
+    I2C_SDA_OUTPUTMODE;  //SJ3060607 - Change SDA_PIN to output pin
+//I2C_SDA_0;   //SJ4130314 - Bring output pin to low
+    return ack;
+}
+
+
+//Ref---
+//gstate_var.general_delay = 1;
+//while (gstate_var.general_delay) ;
+
+// Description:
+//   Byte Write Operation.
+//   A data byte is written into a user defined address.
+/*---------------------------------------------------------------------------*/
+//uint8_t One_Touch_I2CWrite(int8_t NumOfByte)
+unsigned char SW_I2CWrite(char NumOfByte)
+{
+    //uint8_t temp_val, rtn_flag=0;
+    //int8_t i, j, ack;
+    unsigned char temp_val, rtn_flag=0;
+    char i, j, ack;//, num_tries;
+
+    //Start I2C communication
+
+    i = 0;
+  #if 0  //SJ5210214 - ORG
+    while (i < NumOfByte)
+  #else  //SJ5210214 - In case something wrong with number of byte to write.
+    while ((i < NumOfByte) && (i < 67))
+  #endif
+    {
+        temp_val = gI2C_Buffer[i];
+        //SJ4140607 - This for loop is to process bit by bit
+        for (j=0; j<8; j++)
+        {
+            I2C_SCL_0;  //Set Clock low - SCL = 0
+
+            if ((temp_val >> (7-j)) & 0x01)  //SJ1160707 - most significant bit first
+                I2C_SDA_1;  //Set Data high - SDA = 1
+            else
+                I2C_SDA_0;  //Set Data low - SDA = 0
+            I2C_DELAY(40);//(100);//(40);
+
+            //SJ4140607 - Generate clock pulse.
+            I2C_SCL_1;  //Set Clock high - SCL = 1
+            I2C_DELAY(40);//(100);//(40);
+
+            I2C_SCL_0;  //Set Clock low - SCL = 0
+            //I2C_SDA_0;  //Set Data low - SDA = 0    //SJ4140607 - Is this sttmt needed???
+            I2C_DELAY(30);//(100);//(30);
+
+        }  //for (j)
+
+        //SJ4140607 - Get acknowledgement
+        ack = I2CCheckSlaveAcknowledgement();
+        if (ack == 1)  //SJ4140607 - Slave is busy
+        {
+            rtn_flag = I2C_WRITE_ERROR;
+            break;   //SJ3101007 - SJNOTE - Monitor
+        }
+        else
+        {
+            I2C_DELAY(30);//(100);//(30);
+            i++;  //SJ4140607 - Slave acknowledged, maka lanjut dgn transmisi seterusnya.
+        }
+    }  //while (i)
+
+    //Stop I2C communication
+    //One_Touch_I2CStop();
+    return (rtn_flag);
+
+}  //End of SW_I2CWrite()
+
+
+
+//uint8_t One_Touch_I2CReadByte(void)
+unsigned char SW_I2CReadByte(void)
+{
+    //uint8_t j, temp_data=0x00;
+    unsigned char j, temp_data=0x00;
+
+    for (j=0; j<8; j++)
+    {
+        I2C_SCL_1;  //Set Clock high - SCL = 1
+        I2C_DELAY(40);//(80);//(100);
+
+        if (I2C_READ_BIT)
+            temp_data = temp_data | (0x80 >> j);
+
+        I2C_SCL_0;  //Set Clock low - SCL = 0
+        I2C_DELAY(40);//(80);//(100);
+
+    }  //for (j=0; j<8; j++)
+
+    return temp_data;
+}
+
+
+//SJ3130607 - I2C_Read()
+//uint8_t One_Touch_I2CRead(int NumOfByte)
+unsigned char SW_I2CRead(int NumOfByte)
+{
+    //uint8_t rtn_flag=0;
+    unsigned char rtn_flag=0;
+    unsigned char j;
+
+    //memset((void*) gI2C_Buffer, 0, MAX_I2C_BUFFER);
+
+    //SJ4140607 - Write Slave addr with read attribute
+    gI2C_Buffer[0] = DEV_ReadCommand;  //SJ4040713 - ORG. Put this sttmt inside the calling function
+
+    SW_I2CStart();   //SJ4140607 - Start I2C communication.
+    //SJ3060607 - Branch to I2C write routine to start writing.
+    rtn_flag = SW_I2CWrite(1);  //SJ3160708 - If returns 1, means slave issues NAK
+
+    if (rtn_flag == 0)
+    {
+        I2C_DELAY(60);//(60;//(80);//(100);
+
+        //--- SJ4140607 - Ketika tiba disini, slave sdh acknowledge. Mulai baca data dari register
+        //SJ4140607 - One Touch register utk data terdiri dari 0x0106 sampai 0x0109.
+        //SJ4140607 - Semuanya 8 bytes.    
+        gI2C_Buffer[0] = 0x00;
+        for (j=0; j<NumOfByte; j++)
+        {
+            I2C_SDA_INPUTMODE;            //SJ4040413 - Change P1.7 (SDA) to input pin
+            gI2C_Buffer[j] = SW_I2CReadByte();
+            I2C_SDA_OUTPUTMODE;           //SJ4040413 - Change P1.7 (SDA) to output pin
+
+            //SJ4260707 FINE_TUNE for (nop=1500; nop>0; nop--) ;
+
+            //if (j < 7)
+            if (j < (NumOfByte-1))
+                I2CMasterAcknowledge(0);   //SJ4140607 - Not reading the last byte, as such issue ACK to slave
+            else
+                I2CMasterAcknowledge(1);   //SJ4140607 - Reading the last byte, Master issues NAK to indicate end of reading
+
+            I2C_DELAY(40);//(50);
+        }   //for (j=0; j<8; j++)
+
+        //SJ4140607 - Master issues NAK to indicate end of reading
+        //I2CMasterAcknowledge(1);
+
+        SW_I2CStop();  //SJ4140607 - Stop I2C communication
+    }    
+  #if 1  //SJ60611007 - If can't read, try to reset one touch chip
+    else
+    {
+        SW_I2CStop();  //SJ4140607 - Stop I2C communication. This stop is req because it was started before if
+    }
+  #endif
+
+    return (rtn_flag);
+
+}  //End of One_Touch_I2CRead()
+
+
+//SJ2280807 - Delay function
+//void I2C_DELAY(int32_t delay)
+void I2C_DELAY(long delay)
+{
+    //int32_t nop;
+    long nop;
+
+  #if 0  //SJ2090413 - Not tolerance
+    for (nop=delay; nop>0; nop--)
+        __no_operation();
+  #else  //SJ2090413 - With tolerance
+    for (nop=delay+TOLERANCE; nop>0; nop--)
+        __no_operation();
+  #endif
+
+}  //End of I2C_Delay()
+
